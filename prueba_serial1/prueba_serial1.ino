@@ -30,6 +30,11 @@ void setup() {
 
   //Iniciamos los puertos serie a utilizar con sus respectivos Baudrates
   loraSerial.begin(115200,SERIAL_8N1, LORA1_SERIAL_RX_PIN, LORA1_SERIAL_TX_PIN);
+  pinMode(LORA1_RESET_PIN, OUTPUT);
+  digitalWrite(LORA1_RESET_PIN, HIGH);
+  vTaskDelay(100);
+  digitalWrite(LORA1_RESET_PIN, LOW);
+  //while(waitResponse(2000));
   debugSerial.begin(9600);
   delay(3000); //[3 s]
   debugSerial.println("::     Programa Prueba_serial      ::");
@@ -51,7 +56,7 @@ void loop() {
   if (debugSerial.available()>0){
   //leo los datos desde el puerto debug 
     getSerialBuffer();  
-    if (ESTADO.equals(debugCommand)){ //statusViewer(true);  
+    if (ESTADO.equals(debugCommand)){ 
       statusViewer(true);
     }
     else{ 

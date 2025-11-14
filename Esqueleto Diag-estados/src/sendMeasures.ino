@@ -1,5 +1,9 @@
+#include "Lora.h"
+
 void sendMeasures(int milimsAcumulados){
   //measure = milimsAcumulados;
+
+  Lora lora;
 
   if(milimsAcumulados < 10)
     sprintf(command, "mac tx cnf 1 000%i", milimsAcumulados);
@@ -13,6 +17,6 @@ void sendMeasures(int milimsAcumulados){
 
 
   debugSerial.println("Enviando mensaje.....:");
-  loraSendCommand(command , loraTimeout, 2);
+  lora.sendCommand(command , loraTimeout, 2);
   delay(3000);
 }

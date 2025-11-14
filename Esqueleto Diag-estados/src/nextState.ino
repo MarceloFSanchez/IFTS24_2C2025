@@ -8,11 +8,12 @@ bool nextState(const uint8_t mask[], enum estados stateMatch, enum estados state
   bool match = true; // si fuera vector nulo matchea siempre
   int i = 0;
     
-  statusViewer(false);
+  lora.statusView(false);
+  lora.getStatusVector(statusEESAMR34); 
     
   for( i = 0; i < STATUS_EESAMR34_LEN; i++){ 
     if(mask[i]){ // compara solo si la máscara es distanta de '0'
-      if(statusLN2903[i] & mask[i]){
+      if(statusEESAMR34[i] & mask[i]){
         state = stateMatch;
         match = true;
       }

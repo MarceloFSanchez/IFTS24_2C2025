@@ -9,53 +9,39 @@
  */
 
 //LIBRERIAS
+#include "config.h"
 #include "lorawan-keys.h"
-
-// MACROS
-// Definición de los puertos serie a utilizar
-//--------------------------------------------
-#define debugSerial Serial
-#define loraSerial Serial2
-#define LORA1_SERIAL_TX_PIN   17
-#define LORA1_SERIAL_RX_PIN   16
-// Definiciones para utilizar con el módulo LoRa
-//------------------------------------------------------
-#define LORA_RESET_PIN       15
-#define RESPONSE_LEN    256
-#define STATUS_EESAMR34_LEN 4 //longitud en Hex del registro de estado
-#define COMMAND_LEN 50
-#define RESPONSE_LEN  100
-#define MAX_RESPONSES  10
-#define APPEUI_LEN 16
-#define APPKEY_LEN 32
+#include "Lora.h"
 
 // CONSTANTES
+const char BAND[6] = "AU915";
+const char DEVEUI[APPEUI_LEN+1] = OTAA_DEVEUI;
 const char APPEUI[APPEUI_LEN+1] = OTAA_APPEUI;
 const char APPKEY[APPKEY_LEN+1] = OTAA_APPKEY;
 const uint8_t JOINEDMASK[STATUS_EESAMR34_LEN] = {0x01, 0x00, 0x00, 0x00};
 const uint8_t ADRMASK[STATUS_EESAMR34_LEN] = {0x40, 0x00, 0x00, 0x00};
-//static const String OK = "ok";
+static const String OKEY = "ok";
 static const String JOINACCEPTED = "accepted";
 static const String MACSENDED = "mac_tx_ok";
 static const String JOINDENIED = "denied";
-const String ESTADO = "estado";
+//static const String STATUS = "status";
 // Utilizadas en estado DEBUG
 const String EXITDEBUG = "exit debug";
 const String INITDEBUG = "init debug";
-//const String STATUS = "status";
+const String ESTADO = "estado";
+
+// Objetos
+Lora lora; // Objeto para comunicación con EESAMR34
 
 // VARIABLES
 static uint8_t statusEESAMR34[STATUS_EESAMR34_LEN] = {0x00, 0x00, 0x00, 0x00};
-static char debugCommand[RESPONSE_LEN];
 static char response[RESPONSE_LEN];
-static int loraTimeout = 10000; // [ms] -- 10 segundos
-static size_t readed = 0;
-static char response[RESPONSE_LEN];
-static char responses[MAX_RESPONSES][RESPONSE_LEN];
-static int loraTimeout = 10000; // [ms] -- 10 segundos
+static int loraTimeout = LORA_TIMEOUT;
+//static size_t readed = 0;
+//static char responses[MAX_RESPONSES][RESPONSE_LEN];
 char command [COMMAND_LEN];
-static int sleepTime = 10000;
-static uint8_t statusLN2903[STATUS_EESAMR34_LEN] = {0x00, 0x00, 0x00, 0x00};
+//static int sleepTime = 10000;
+
 // Variables utilizadas para indicar estados de trabajo y medición
 //----------------------------------------------------------------
 enum estados{ //Definimos los estados en que puede trabajar el nodo e intervalos de medicion
@@ -64,8 +50,10 @@ enum estados{ //Definimos los estados en que puede trabajar el nodo e intervalos
 };
 static volatile enum estados state;
 static volatile enum estados stateBefore; // para guardar estando anterior al entrar en DEBUG
+
 //Variables a utilizar para la medición del sensor
 //--------------------------------------------
+
 //Variales para entrar a modo DEBUG
 //--------------------------------------------
 int adqDebug = 20;
@@ -99,22 +87,29 @@ void setup(){
   
   // versión del firmware LoRaWAN en el chip EESAMR34
   debugSerial.println("::     Versión firmware LoRaWAN      ::");
-  loraSendCommand("sys get ver", loraTimeout, 1);
+  lora.sendCommand("sys get ver", loraTimeout, 1);
 
   // INFO DE CONFIGURACION
   // Algunos parámetros pueden ser de fábrica, pero otros pueden
   // estar guardados en la EEPROM desde la última configuración.
 
   // ¡¡¡ Para resetear de fábrica descomentar la siguiente línea !!!
-  // loraSendCommand("sys factoryRESET", loraTimeout, 1);
-  loraGetMacParameters();
+  // lora.sendCommand("sys factoryRESET", loraTimeout, 1);
+  lora.getMacParameters();
 
-  // se cargan appeui y appkey desde archivo lorawan-keys.h
-  snprintf(command, COMMAND_LEN, "mac set appeui %s", APPEUI);
-  loraSendCommand(command, loraTimeout, 1);
+  // se configuran lo parámetros regionales
+  snprintf(command, COMMAND_LEN, "mac reset %s", BAND);
+  lora.sendCommand(command, loraTimeout, 1);
+
+  // se cargan appeui, appkey y joineui desde archivo lorawan-keys.h
+  snprintf(command, COMMAND_LEN, "mac set deveui %s", DEVEUI);
+  lora.sendCommand(command, loraTimeout, 1);
   
   snprintf(command, COMMAND_LEN, "mac set appkey %s", APPKEY);  
-  loraSendCommand(command, loraTimeout, 1);  
+  lora.sendCommand(command, loraTimeout, 1);
+
+  snprintf(command, COMMAND_LEN, "mac set joineui %s", OTAA_JOINEUI);  
+  lora.sendCommand(command, loraTimeout, 1);  
 
 }//Fin del Setup
 
@@ -136,8 +131,8 @@ void loop(){
       debugSerial.println("\n ::     Estado CONEXION OTAA      ::\n"); // DEBUG
 
       // Envío de comando para conexión
-      loraSendCommand("mac join otaa", loraTimeout, 2);
-      delay(3000);
+      lora.sendCommand("mac join otaa", loraTimeout, 2);
+      delay(15000);
 
       // Verificación estado de conexión
       if(!nextState(JOINEDMASK, LECTURA_SENSORES, CONEXION_OTAA));
@@ -151,6 +146,8 @@ void loop(){
     case LECTURA_SENSORES:
       
       debugSerial.println("\n ::     Estado LECTURA SENSORES      ::\n");
+
+      delay(random(30000,90000));
 /*
     *******************************************************************
    **                                                                 **
@@ -168,33 +165,31 @@ void loop(){
 
       debugSerial.println("\n ::     Estado ENVIO DATOS      ::\n");
 
-      // En este estado se activa un contador cuando se produce la interrupcion de lluvia.     
-      debugSerial.print("Precipitacion acumulada(mm): "); // DEBUG
-      milimsAcumulados = milimsAcumulados + 2;
-      debugSerial.println(milimsAcumulados/10);  // DEBUG
+      sendMeasures(random(9999));
+
+      state = LECTURA_SENSORES;
 
     break;
 
     case DEBUG:
-
       if (debugSerial.available()>0){
       //leo los datos desde el puerto debug 
-	      getSerialBuffer();  
+	      getSerialBuffer();
         if (EXITDEBUG.equals(debugCommand)){
           debugSerial.println("Cambiando a estado anterior....");
           state = stateBefore;
         }
-        else if (STATUS.equals(debugCommand)) statusViewer(true);  
+        else if (ESTADO.equals(debugCommand)) lora.statusView(true);  
         else{ 
         // envio los datos al modulo Lora y muestro por puerto debug
         // hasta 2 respuestas
-          loraSendCommand(debugCommand, loraTimeout, 2);
+          lora.sendCommand(debugCommand, loraTimeout, 2);
         }  
       }
 	    // si luego de esperar 2 respuestas desde LN2903 apararecen 
-	    // nuevos en el buffer 
-      if (loraSerial.available()>0) loraWaitResponse(1000);
-      if (loraSerial.available()>0) loraWaitResponse(1000);
+	    // nuevos en el buffer
+      if (loraSerial.available()>0) lora.waitResponse(1000);
+      if (loraSerial.available()>0) lora.waitResponse(1000);
 
     break;
   
@@ -203,12 +198,12 @@ void loop(){
   // fuera del switch verificamos si hay datos disponibles en el
   // buffer del puerto 'debugSerial' y si coincide con el comando para
   // entrar en modo debug "init debug".
-  if (debugSerial.available()>0){
+  if (state != DEBUG && debugSerial.available()>0){
     getSerialBuffer();  // guarda los datos del buffer en debugCommand
     if (INITDEBUG.equals(debugCommand)){
       stateBefore = state;
       state = DEBUG;
-      debugSerial.println(":::: EN DEBUG: Programa Principal Detenido :::");
+      debugSerial.println("\n::::     EN DEBUG: Programa Principal Detenido    :::\n");
     }
   }
 

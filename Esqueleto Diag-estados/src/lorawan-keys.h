@@ -12,14 +12,16 @@
 // Keys required for OTAA activation:
 
 // End-device Identifier in msb format
-// #define OTAA_DEVEUI "123456789ABCDEF20"
+#define OTAA_DEVEUI "f3f40ba56e175c53"
 
 // Application Identifier  in msb format
-#define OTAA_APPEUI "0000000000000000"
+#define OTAA_APPEUI "123456789ABCDEF"
 
 // Application Key in msb format
 #define OTAA_APPKEY "00001111122222333334444455555666"
 
+// Application Key in msb format
+#define OTAA_JOINEUI "0011223344556677"
 
 // -----------------------------------------------------------------------------
 
